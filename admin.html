@@ -23,6 +23,9 @@
   .btn-secondary:hover { color: var(--text-primary); border-color: var(--text-secondary); }
   fieldset { border: none; padding: 0; margin: 0; }
   fieldset:disabled { opacity: 0.45; }
+  .hint { font-size: 12px; color: var(--text-muted); margin: -6px 0 10px; }
+  .cur-qty { font-size: 12px; color: var(--text-secondary); margin: -6px 0 10px; }
+  .field[data-hidden="true"] { display: none; }
 </style>
 </head>
 <body>
@@ -34,8 +37,8 @@
 <div class="wrap">
 
   <div id="gate" class="token-gate">
-    <h1>please insert your name</h1>
-    <p class="subtitle">每一筆編輯都會記錄下來，方便日後排查</p>
+    <h1>輸入密碼</h1>
+    <p class="subtitle">每個人有自己的一組密碼(也代表妳的身分,會記錄在編輯紀錄裡)</p>
     <div class="field"><input id="tokenInput" type="password" placeholder="密碼"></div>
     <br>
     <button class="btn-primary" id="unlockBtn">解鎖</button>
@@ -44,53 +47,74 @@
 
   <div id="forms" style="display:none">
     <h1>編輯資料</h1>
-    <p class="subtitle">填完先按「檢查並送出」,看清楚變更內容再按確認！</p>
+    <p class="subtitle">填完先按「檢查並送出」,看清楚變更內容再按確認——確認之後才會真的寫進去。庫存異動跟現金流都是「記一筆事件」,不是直接改總數,總數是系統自動加總算出來的。</p>
 
     <div class="card">
-      <h2>📦 新增 / 更新庫存品項</h2>
-      <p class="desc">品項名稱如果跟現有的一樣,會直接更新那一筆(數量整個覆蓋,不是加總);名稱不一樣就新增一筆。</p>
-      <form id="invForm">
-        <fieldset id="invFieldset">
+      <h2>📇 品項主檔設定</h2>
+      <p class="desc">新增新品項,或修改現有品項的分類 / 安全庫存量。這裡不填數量——數量是從下面「庫存異動」自動加總出來的。</p>
+      <form id="masterForm">
+        <fieldset id="masterFieldset">
           <div class="field-row">
             <div class="field"><label>品項名稱</label><input name="name" list="itemNames" required></div>
-            <div class="field"><label>目前數量</label><input name="qty" type="number" min="0" required></div>
             <div class="field"><label>分類</label><input name="category"></div>
-            <div class="field"><label>存放地點</label><input name="location"></div>
             <div class="field"><label>安全庫存量</label><input name="safetyStock" type="number" min="0"></div>
           </div>
           <button class="btn-primary" type="submit">檢查並送出</button>
         </fieldset>
-        <div class="preview-box" id="invPreview" style="display:none"></div>
-        <div class="form-msg" id="invMsg"></div>
+        <div class="preview-box" id="masterPreview" style="display:none"></div>
+        <div class="form-msg" id="masterMsg"></div>
       </form>
     </div>
 
     <div class="card">
-      <h2>🛒 新增銷售紀錄</h2>
-      <p class="desc">同一個月、同一個品項再送一次,數量會用加總的(適合分批登打)。</p>
-      <form id="saleForm">
-        <fieldset id="saleFieldset">
+      <h2>📦 新增庫存異動</h2>
+      <p class="desc">進貨、賣掉、倉庫搬到辦公室、盤點校正——不管哪一種都在這裡記一筆,系統會自動把目前庫存數量重算一次。</p>
+      <form id="movForm">
+        <fieldset id="movFieldset">
           <div class="field-row">
-            <div class="field"><label>月份</label><input name="month" type="month" required></div>
-            <div class="field"><label>品項名稱</label><input name="name" list="itemNames" required></div>
-            <div class="field"><label>賣出數量</label><input name="qty" type="number" min="0" required></div>
+            <div class="field"><label>日期</label><input name="date" type="date" required></div>
+            <div class="field">
+              <label>事件類型</label>
+              <select name="type" id="movType" required>
+                <option value="進貨">進貨(貨進來了)</option>
+                <option value="銷售">銷售(賣掉了)</option>
+                <option value="移倉">移倉(從一個地點搬到另一個)</option>
+                <option value="盤點調整">盤點調整(盤點後手動校正)</option>
+              </select>
+            </div>
+            <div class="field"><label>品項名稱</label><select name="name" id="movName" required></select></div>
+            <div class="field"><label id="movQtyLabel">數量</label><input name="qty" id="movQty" type="number" required></div>
           </div>
+          <div class="cur-qty" id="movCurQty"></div>
+          <div class="field-row">
+            <div class="field" id="movFromField"><label>來源地點</label><input name="fromLocation" id="movFrom" placeholder="例如:倉庫A"></div>
+            <div class="field" id="movToField"><label id="movToLabel">目的地點</label><input name="toLocation" id="movTo" placeholder="例如:辦公室"></div>
+            <div class="field"><label>備註(選填)</label><input name="note"></div>
+          </div>
+          <p class="hint" id="movHint"></p>
           <button class="btn-primary" type="submit">檢查並送出</button>
         </fieldset>
-        <div class="preview-box" id="salePreview" style="display:none"></div>
-        <div class="form-msg" id="saleMsg"></div>
+        <div class="preview-box" id="movPreview" style="display:none"></div>
+        <div class="form-msg" id="movMsg"></div>
       </form>
     </div>
 
     <div class="card">
-      <h2>💰 新增 / 更新現金流</h2>
-      <p class="desc">同一個月再送一次,會覆蓋掉原本那個月的收入/支出(不是加總)。淨額自動算。</p>
+      <h2>💰 新增現金流事件</h2>
+      <p class="desc">一筆一筆的收入或支出,每月報表由系統自動照日期分月加總。</p>
       <form id="cfForm">
         <fieldset id="cfFieldset">
           <div class="field-row">
-            <div class="field"><label>月份</label><input name="month" type="month" required></div>
-            <div class="field"><label>收入</label><input name="income" type="number" min="0" required></div>
-            <div class="field"><label>支出</label><input name="expense" type="number" min="0" required></div>
+            <div class="field"><label>日期</label><input name="date" type="date" required></div>
+            <div class="field">
+              <label>類型</label>
+              <select name="type" required>
+                <option value="收入">收入</option>
+                <option value="支出">支出</option>
+              </select>
+            </div>
+            <div class="field"><label>金額</label><input name="amount" type="number" min="0" required></div>
+            <div class="field"><label>說明(選填)</label><input name="note" placeholder="例如:7月貨款、房租"></div>
           </div>
           <button class="btn-primary" type="submit">檢查並送出</button>
         </fieldset>
@@ -119,7 +143,6 @@ const TOKEN_KEY = "boss_dashboard_admin_token";
 const NAME_KEY = "boss_dashboard_admin_name";
 
 let inventoryCache = [];
-let cashflowCache = [];
 
 function getToken() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
 function getName() { try { return localStorage.getItem(NAME_KEY) || ""; } catch (e) { return ""; } }
@@ -145,6 +168,9 @@ function showWhoami(name) {
 function showForms() {
   document.getElementById("gate").style.display = "none";
   document.getElementById("forms").style.display = "block";
+  const today = new Date().toISOString().slice(0, 10);
+  document.querySelector('#movForm input[name="date"]').value = today;
+  document.querySelector('#cfForm input[name="date"]').value = today;
   refreshCaches();
   loadHistory();
 }
@@ -178,6 +204,7 @@ async function refreshCaches() {
   try {
     const invData = await fetchData("inventory");
     inventoryCache = invData.inventory || [];
+
     const list = document.getElementById("itemNames");
     list.innerHTML = "";
     inventoryCache.forEach(i => {
@@ -185,12 +212,46 @@ async function refreshCaches() {
       opt.value = i.name;
       list.appendChild(opt);
     });
-  } catch (e) { /* 名單抓不到就算了,不影響手動打字新增 */ }
-  try {
-    const cfData = await fetchData("cashflow");
-    cashflowCache = cfData.cashflow || [];
-  } catch (e) { /* 沒關係,現金流表單一樣能送出,只是預覽看不到舊值 */ }
+
+    const movSelect = document.getElementById("movName");
+    const prevVal = movSelect.value;
+    movSelect.innerHTML = inventoryCache.map(i => `<option value="${i.name}">${i.name}</option>`).join("");
+    if (prevVal && inventoryCache.some(i => i.name === prevVal)) movSelect.value = prevVal;
+    updateCurQtyHint();
+  } catch (e) { /* 名單抓不到就算了,品項主檔表單一樣能手動打字新增 */ }
 }
+
+function updateCurQtyHint() {
+  const name = document.getElementById("movName").value;
+  const item = inventoryCache.find(i => i.name === name);
+  const box = document.getElementById("movCurQty");
+  if (!item) { box.textContent = ""; return; }
+  box.textContent = `目前庫存總量:${item.qty}` + (item.location ? `(${item.location})` : "(還沒有地點分布資料)");
+}
+
+// 依「事件類型」切換來源/目的地點欄位的顯示、必填、跟數量欄位的說明文字
+const MOV_TYPE_CONFIG = {
+  "進貨":     { from: false, to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "進貨數量請填正數。" },
+  "銷售":     { from: true,  to: false, toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "銷售數量請填正數。來源地點可以留空(如果不確定是從哪個倉庫出貨)。" },
+  "移倉":     { from: true,  to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "移倉數量請填正數,來源跟目的地點都要填,而且要不一樣。" },
+  "盤點調整": { from: false, to: true,  toLabel: "地點",     qtyLabel: "校正數量(可正可負)", qtyMin: null, hint: "盤點少了就填負數(盤虧),盤點多了就填正數(盤盈),記得在備註寫原因。" },
+};
+
+function applyMovTypeConfig() {
+  const type = document.getElementById("movType").value;
+  const cfg = MOV_TYPE_CONFIG[type];
+  document.getElementById("movFromField").dataset.hidden = cfg.from ? "false" : "true";
+  document.getElementById("movFrom").required = cfg.from;
+  document.getElementById("movToField").dataset.hidden = cfg.to ? "false" : "true";
+  document.getElementById("movTo").required = cfg.to;
+  document.getElementById("movToLabel").textContent = cfg.toLabel;
+  document.getElementById("movQtyLabel").textContent = cfg.qtyLabel;
+  const qtyInput = document.getElementById("movQty");
+  if (cfg.qtyMin === null) qtyInput.removeAttribute("min"); else qtyInput.min = cfg.qtyMin;
+  document.getElementById("movHint").textContent = cfg.hint;
+}
+document.getElementById("movType").addEventListener("change", applyMovTypeConfig);
+document.getElementById("movName").addEventListener("change", updateCurQtyHint);
 
 async function loadHistory() {
   const tbody = document.querySelector("#historyTable tbody");
@@ -213,7 +274,7 @@ async function loadHistory() {
 
 // ---------- 通用的「檢查 → 確認送出」流程 ----------
 function setupForm(opts) {
-  // opts: formId, fieldsetId, previewId, msgId, action, fields, buildPreview(data) → { html, }
+  // opts: formId, fieldsetId, previewId, msgId, action, fields, buildPreview(data) → html
   const form = document.getElementById(opts.formId);
   const fieldset = document.getElementById(opts.fieldsetId);
   const preview = document.getElementById(opts.previewId);
@@ -250,6 +311,11 @@ function setupForm(opts) {
         form.reset();
         preview.style.display = "none";
         fieldset.disabled = false;
+        if (opts.formId === "movForm" || opts.formId === "cfForm") {
+          const today = new Date().toISOString().slice(0, 10);
+          form.querySelector('input[name="date"]').value = today;
+        }
+        if (opts.formId === "movForm") applyMovTypeConfig();
         refreshCaches();
         loadHistory();
       } catch (err) {
@@ -261,50 +327,49 @@ function setupForm(opts) {
 }
 
 setupForm({
-  formId: "invForm", fieldsetId: "invFieldset", previewId: "invPreview", msgId: "invMsg",
-  action: "upsertInventory", fields: ["name","qty","category","location","safetyStock"],
+  formId: "masterForm", fieldsetId: "masterFieldset", previewId: "masterPreview", msgId: "masterMsg",
+  action: "upsertInventoryMaster", fields: ["name","category","safetyStock"],
   buildPreview(data) {
     const existing = inventoryCache.find(i => i.name === data.name);
-    const title = existing ? `即將更新「${data.name}」` : `即將新增品項「${data.name}」`;
+    const title = existing ? `即將更新品項「${data.name}」的基本資料` : `即將新增品項「${data.name}」`;
     let rows = "";
     if (existing) {
-      rows += `數量:${existing.qty} → <b>${data.qty}</b><br>`;
       rows += `分類:${existing.category || "(空)"} → <b>${data.category || "(空)"}</b><br>`;
-      rows += `存放地點:${existing.location || "(空)"} → <b>${data.location || "(空)"}</b><br>`;
       rows += `安全庫存量:${existing.safetyStock} → <b>${data.safetyStock || 0}</b>`;
     } else {
-      rows += `數量:<b>${data.qty}</b>、分類:<b>${data.category || "(空)"}</b>、`;
-      rows += `存放地點:<b>${data.location || "(空)"}</b>、安全庫存量:<b>${data.safetyStock || 0}</b>`;
+      rows += `分類:<b>${data.category || "(空)"}</b>、安全庫存量:<b>${data.safetyStock || 0}</b>`;
     }
-    return `<div class="preview-title">${title}</div>${rows}`;
+    return `<div class="preview-title">${title}</div>${rows}<div class="hint" style="margin-top:8px">這裡不改數量,數量要到「新增庫存異動」那邊記一筆進貨/調整。</div>`;
   }
 });
 
 setupForm({
-  formId: "saleForm", fieldsetId: "saleFieldset", previewId: "salePreview", msgId: "saleMsg",
-  action: "addSale", fields: ["month","name","qty"],
+  formId: "movForm", fieldsetId: "movFieldset", previewId: "movPreview", msgId: "movMsg",
+  action: "addMovement", fields: ["date","type","name","qty","fromLocation","toLocation","note"],
   buildPreview(data) {
-    return `<div class="preview-title">即將登錄銷售紀錄</div>
-      ${data.month} — ${data.name}:<b>+${data.qty}</b> 件(如果這個月這個品項已經有紀錄,會用加總的)`;
+    const cfg = MOV_TYPE_CONFIG[data.type];
+    let desc = "";
+    if (data.type === "進貨") desc = `進貨 <b>${data.qty}</b>件,進到「${data.toLocation}」`;
+    else if (data.type === "銷售") desc = `銷售 <b>${data.qty}</b>件` + (data.fromLocation ? `,出自「${data.fromLocation}」` : "(不指定地點)");
+    else if (data.type === "移倉") desc = `移倉 <b>${data.qty}</b>件:「${data.fromLocation}」 → 「${data.toLocation}」`;
+    else if (data.type === "盤點調整") desc = (Number(data.qty) >= 0 ? `盤盈 +` : `盤虧 `) + `<b>${data.qty}</b>件,地點「${data.toLocation}」`;
+    return `<div class="preview-title">即將記錄一筆「${data.type}」</div>
+      日期:${data.date}<br>品項:${data.name}<br>${desc}${data.note ? `<br>備註:${data.note}` : ""}
+      <div class="hint" style="margin-top:8px">這是新增一筆事件,不會蓋掉之前的紀錄,送出後系統會自動重新算出目前庫存。</div>`;
   }
 });
 
 setupForm({
   formId: "cfForm", fieldsetId: "cfFieldset", previewId: "cfPreview", msgId: "cfMsg",
-  action: "upsertCashflow", fields: ["month","income","expense"],
+  action: "addCashflowEntry", fields: ["date","type","amount","note"],
   buildPreview(data) {
-    const existing = cashflowCache.find(c => c.month === data.month);
-    const title = existing ? `即將更新 ${data.month} 的現金流` : `即將新增 ${data.month} 的現金流`;
-    let rows = "";
-    if (existing) {
-      rows += `收入:${existing.income.toLocaleString()} → <b>${Number(data.income).toLocaleString()}</b><br>`;
-      rows += `支出:${existing.expense.toLocaleString()} → <b>${Number(data.expense).toLocaleString()}</b>`;
-    } else {
-      rows += `收入:<b>${Number(data.income).toLocaleString()}</b>、支出:<b>${Number(data.expense).toLocaleString()}</b>`;
-    }
-    return `<div class="preview-title">${title}</div>${rows}`;
+    return `<div class="preview-title">即將記錄一筆「${data.type}」</div>
+      日期:${data.date}<br>金額:<b>${Number(data.amount).toLocaleString()}</b>${data.note ? `<br>說明:${data.note}` : ""}
+      <div class="hint" style="margin-top:8px">這是新增一筆事件,月報表會自動照日期重新加總。</div>`;
   }
 });
+
+applyMovTypeConfig();
 
 // 如果之前解鎖過,這台裝置會記住身分,直接進表單頁(但還是要跟伺服器確認密碼還有效)
 (async function init() {
