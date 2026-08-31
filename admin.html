@@ -37,8 +37,8 @@
 <div class="wrap">
 
   <div id="gate" class="token-gate">
-    <h1>輸入密碼</h1>
-    <p class="subtitle">每個人有自己的一組密碼(也代表妳的身分,會記錄在編輯紀錄裡)</p>
+    <h1>please insert your name</h1>
+    <p class="subtitle">每筆更新都會記錄在編輯紀錄裡)</p>
     <div class="field"><input id="tokenInput" type="password" placeholder="密碼"></div>
     <br>
     <button class="btn-primary" id="unlockBtn">解鎖</button>
@@ -47,11 +47,11 @@
 
   <div id="forms" style="display:none">
     <h1>編輯資料</h1>
-    <p class="subtitle">填完先按「檢查並送出」,看清楚變更內容再按確認——確認之後才會真的寫進去。庫存異動跟現金流都是「記一筆事件」,不是直接改總數,總數是系統自動加總算出來的。</p>
+    <p class="subtitle">填完先按「檢查並送出」,看清楚變更內容再按確認!</p>
 
     <div class="card">
       <h2>📇 品項主檔設定</h2>
-      <p class="desc">新增新品項,或修改現有品項的分類 / 安全庫存量。這裡不填數量——數量是從下面「庫存異動」自動加總出來的。</p>
+      <p class="desc">新增新品項,或修改現有品項的分類 / 安全庫存量。</p>
       <form id="masterForm">
         <fieldset id="masterFieldset">
           <div class="field-row">
@@ -68,7 +68,7 @@
 
     <div class="card">
       <h2>📦 新增庫存異動</h2>
-      <p class="desc">進貨、賣掉、倉庫搬到辦公室、盤點校正——不管哪一種都在這裡記一筆,系統會自動把目前庫存數量重算一次。</p>
+      <p class="desc">進貨、賣掉、倉庫搬到辦公室、盤點校正</p>
       <form id="movForm">
         <fieldset id="movFieldset">
           <div class="field-row">
@@ -76,9 +76,9 @@
             <div class="field">
               <label>事件類型</label>
               <select name="type" id="movType" required>
-                <option value="進貨">進貨(貨進來了)</option>
-                <option value="銷售">銷售(賣掉了)</option>
-                <option value="移倉">移倉(從一個地點搬到另一個)</option>
+                <option value="進貨">進貨</option>
+                <option value="銷售">銷售</option>
+                <option value="移倉">移倉</option>
                 <option value="盤點調整">盤點調整(盤點後手動校正)</option>
               </select>
             </div>
