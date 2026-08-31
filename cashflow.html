@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>現金流 — 老闆儀表板</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  svg.chart { width: 100%; height: 260px; display: block; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .baseline-line { stroke: var(--baseline); stroke-width: 1; }
+  .axis-text { fill: var(--text-muted); font-size: 11px; }
+  .bar-income { fill: var(--series-blue); }
+  .bar-expense { fill: var(--series-orange); }
+  .bar-net-pos { fill: var(--series-blue); }
+  .bar-net-neg { fill: var(--critical); }
+  .val-label { fill: var(--text-secondary); font-size: 10.5px; }
+  .chart-tip-target { cursor: pointer; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <span class="brand">老闆儀表板</span>
+  <a href="index.html">總覽</a>
+  <a href="inventory.html">庫存</a>
+  <a href="cashflow.html" class="active">現金流</a>
+  <a href="admin.html">✏️ 編輯資料</a>
+</nav>
+<div class="wrap">
+  <h1>現金流</h1>
+  <p class="subtitle">每月收入、支出、淨額</p>
+
+  <div id="kpiRow" class="kpi-row"></div>
+
+  <div class="card">
+    <h2>每月收入 vs 支出</h2>
+    <p class="desc">滑鼠移到長條上看細節</p>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:var(--series-blue)"></span>收入</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--series-orange)"></span>支出</span>
+    </div>
+    <svg class="chart" id="incomeExpenseChart" viewBox="0 0 960 260" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="card">
+    <h2>每月淨額</h2>
+    <p class="desc">藍色是正的(賺)、紅色是負的(虧),以 0 為基準線</p>
+    <svg class="chart" id="netChart" viewBox="0 0 960 260" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="card">
+    <h2>明細表</h2>
+    <table id="detailTable">
+      <thead><tr><th>月份</th><th class="num">收入</th><th class="num">支出</th><th class="num">淨額</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script src="assets/config.js"></script>
+<script src="assets/api.js"></script>
+<script>
+const fmtMoney = n => "$" + Math.round(n).toLocaleString();
+const tooltip = document.getElementById("tooltip");
+
+function showTip(e, html) {
+  tooltip.style.opacity = "1";
+  tooltip.style.left = (e.clientX + 14) + "px";
+  tooltip.style.top = (e.clientY - 14) + "px";
+  tooltip.innerHTML = html;
+}
+function hideTip() { tooltip.style.opacity = "0"; }
+
+function drawIncomeExpense(data) {
+  const svg = document.getElementById("incomeExpenseChart");
+  const W = 960, H = 260, padL = 60, padR = 20, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxVal = Math.max(1, ...data.map(d => Math.max(d.income, d.expense)));
+  const niceMax = Math.ceil(maxVal / 4) * 4 * 1.1;
+  const yFor = v => padT + plotH - (v / niceMax) * plotH;
+
+  const groupW = plotW / data.length;
+  const barW = Math.min(24, groupW * 0.28);
+  const gap = 3;
+
+  let s = "";
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = (niceMax / ticks) * i;
+    const y = yFor(v);
+    s += `<line class="grid-line" x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}"/>`;
+    s += `<text class="axis-text" x="${padL-10}" y="${y+4}" text-anchor="end">${(v/1000).toFixed(0)}k</text>`;
+  }
+
+  data.forEach((d, i) => {
+    const cx = padL + groupW * (i + 0.5);
+    const incX = cx - barW - gap/2;
+    const expX = cx + gap/2;
+    const incY = yFor(d.income), expY = yFor(d.expense);
+    s += `<rect class="bar-income chart-tip-target" data-i="${i}" data-s="income" x="${incX}" y="${incY}" width="${barW}" height="${padT+plotH-incY}" rx="4"/>`;
+    s += `<rect class="bar-expense chart-tip-target" data-i="${i}" data-s="expense" x="${expX}" y="${expY}" width="${barW}" height="${padT+plotH-expY}" rx="4"/>`;
+    s += `<text class="axis-text" x="${cx}" y="${H-8}" text-anchor="middle">${d.month}</text>`;
+  });
+
+  svg.innerHTML = s;
+  svg.querySelectorAll(".chart-tip-target").forEach(el => {
+    el.addEventListener("mousemove", (e) => {
+      const i = +el.dataset.i, s = el.dataset.s, d = data[i];
+      const label = s === "income" ? "收入" : "支出";
+      showTip(e, `<b>${d.month}</b><br>${label}:${fmtMoney(s === "income" ? d.income : d.expense)}`);
+    });
+    el.addEventListener("mouseleave", hideTip);
+  });
+}
+
+function drawNet(data) {
+  const svg = document.getElementById("netChart");
+  const W = 960, H = 260, padL = 60, padR = 20, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxAbs = Math.max(1, ...data.map(d => Math.abs(d.net)));
+  const niceMax = Math.ceil(maxAbs / 4) * 4 * 1.15;
+  const zeroY = padT + plotH / 2;
+  const yFor = v => zeroY - (v / niceMax) * (plotH / 2);
+
+  const groupW = plotW / data.length;
+  const barW = Math.min(28, groupW * 0.4);
+
+  let s = "";
+  s += `<line class="baseline-line" x1="${padL}" y1="${zeroY}" x2="${W-padR}" y2="${zeroY}"/>`;
+  s += `<text class="axis-text" x="${padL-10}" y="${zeroY+4}" text-anchor="end">0</text>`;
+
+  data.forEach((d, i) => {
+    const cx = padL + groupW * (i + 0.5);
+    const x = cx - barW/2;
+    const y = d.net >= 0 ? yFor(d.net) : zeroY;
+    const h = Math.abs(yFor(d.net) - zeroY);
+    const cls = d.net >= 0 ? "bar-net-pos" : "bar-net-neg";
+    s += `<rect class="${cls} chart-tip-target" data-i="${i}" x="${x}" y="${y}" width="${barW}" height="${h}" rx="4"/>`;
+    s += `<text class="axis-text" x="${cx}" y="${H-8}" text-anchor="middle">${d.month}</text>`;
+  });
+
+  svg.innerHTML = s;
+  svg.querySelectorAll(".chart-tip-target").forEach(el => {
+    el.addEventListener("mousemove", (e) => {
+      const d = data[+el.dataset.i];
+      showTip(e, `<b>${d.month}</b><br>淨額:${fmtMoney(d.net)}`);
+    });
+    el.addEventListener("mouseleave", hideTip);
+  });
+}
+
+(async function init() {
+  const container = document.getElementById("incomeExpenseChart").closest(".card");
+  try {
+    const res = await fetchData("cashflow");
+    const data = (res.cashflow || []).slice().sort((a,b) => a.month.localeCompare(b.month));
+    if (!data.length) {
+      document.querySelector(".wrap").insertAdjacentHTML("beforeend", '<div class="state-msg">還沒有現金流資料</div>');
+      return;
+    }
+
+    const totalIncome = data.reduce((s,d)=>s+d.income,0);
+    const totalExpense = data.reduce((s,d)=>s+d.expense,0);
+    const totalNet = totalIncome - totalExpense;
+    const latest = data[data.length-1];
+    document.getElementById("kpiRow").innerHTML = `
+      <div class="stat-tile"><div class="stat-label">最新月份淨額(${latest.month})</div><div class="stat-value">${fmtMoney(latest.net)}</div></div>
+      <div class="stat-tile"><div class="stat-label">累計收入</div><div class="stat-value">${fmtMoney(totalIncome)}</div></div>
+      <div class="stat-tile"><div class="stat-label">累計支出</div><div class="stat-value">${fmtMoney(totalExpense)}</div></div>
+      <div class="stat-tile"><div class="stat-label">累計淨額</div><div class="stat-value">${fmtMoney(totalNet)}</div></div>
+    `;
+
+    drawIncomeExpense(data);
+    drawNet(data);
+
+    document.querySelector("#detailTable tbody").innerHTML = data.map(d => `
+      <tr><td>${d.month}</td><td class="num">${fmtMoney(d.income)}</td><td class="num">${fmtMoney(d.expense)}</td><td class="num">${fmtMoney(d.net)}</td></tr>
+    `).join("");
+  } catch (err) {
+    const msg = err.message === "CONFIG_MISSING" ? "config-missing" : "error";
+    renderState(container, msg, err.message);
+  }
+})();
+</script>
+</body>
+</html>

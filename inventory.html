@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>庫存 — 老闆儀表板</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .barchart { display: flex; flex-direction: column; gap: 2px; }
+  .bar-row { display: grid; grid-template-columns: 140px 1fr 84px; align-items: center; gap: 10px; padding: 5px 0; }
+  .bar-name { font-size: 12.5px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { position: relative; height: 24px; }
+  .bar-fill { position: absolute; left: 0; top: 0; height: 24px; border-radius: 4px; cursor: pointer; }
+  .bar-val { font-size: 12px; color: var(--text-secondary); }
+  .bar-empty { font-size: 11.5px; color: var(--text-muted); font-style: italic; }
+  .chart-axis-row { display: grid; grid-template-columns: 140px 1fr 84px; gap: 10px; padding-top: 8px; border-top: 1px solid var(--grid); margin-top: 4px; }
+  .axis-labels { position: relative; height: 16px; font-size: 11px; color: var(--text-muted); }
+  .axis-labels span { position: absolute; transform: translateX(-50%); }
+  .axis-labels span:first-child { transform: translateX(0); }
+  .filters { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filters select { font-size: 12.5px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text-primary); }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <span class="brand">老闆儀表板</span>
+  <a href="index.html">總覽</a>
+  <a href="inventory.html" class="active">庫存</a>
+  <a href="cashflow.html">現金流</a>
+  <a href="admin.html">✏️ 編輯資料</a>
+</nav>
+<div class="wrap">
+  <h1>庫存</h1>
+  <p class="subtitle">依「可撐月數」由急到緩排序,月數是用過去最多6個月的平均銷量估算</p>
+
+  <div id="kpiRow" class="kpi-row"></div>
+
+  <div class="card">
+    <h2>各品項庫存可撐月數</h2>
+    <p class="desc">庫存量 ÷ 過去平均月銷量。滑鼠移到長條上看細節。</p>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:var(--critical)"></span>不足 1 個月</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--warning)"></span>1~2 個月</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--good)"></span>2 個月以上</span>
+    </div>
+    <div class="filters">
+      <select id="filterCategory"><option value="">全部分類</option></select>
+      <select id="filterLocation"><option value="">全部地點</option></select>
+    </div>
+    <div id="barchart" class="barchart"><div class="state-msg">資料讀取中…</div></div>
+    <div class="chart-axis-row"><div></div><div class="axis-labels" id="axisLabels"></div><div></div></div>
+  </div>
+
+  <div class="card">
+    <h2>明細表</h2>
+    <table id="detailTable">
+      <thead>
+        <tr>
+          <th>品項名稱</th><th>分類</th><th>存放地點</th>
+          <th class="num">目前庫存</th><th class="num">安全庫存量</th>
+          <th class="num">月均銷量</th><th class="num">可撐月數</th><th>狀態</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script src="assets/config.js"></script>
+<script src="assets/api.js"></script>
+<script>
+function statusOf(monthsLeft) {
+  if (monthsLeft === null || monthsLeft === undefined) return null;
+  if (monthsLeft < 1) return "critical";
+  if (monthsLeft < 2) return "warning";
+  return "good";
+}
+const statusColorVar = { good: "var(--good)", warning: "var(--warning)", critical: "var(--critical)" };
+const statusLabel = { good: "足夠", warning: "注意", critical: "不足" };
+
+let allItems = [];
+
+function applyFilters() {
+  const cat = document.getElementById("filterCategory").value;
+  const loc = document.getElementById("filterLocation").value;
+  return allItems.filter(i => (!cat || i.category === cat) && (!loc || i.location === loc));
+}
+
+function render() {
+  const items = applyFilters();
+  const withData = items.filter(i => i.monthsLeft !== null && i.monthsLeft !== undefined);
+  const withoutData = items.filter(i => i.monthsLeft === null || i.monthsLeft === undefined);
+  withData.sort((a, b) => a.monthsLeft - b.monthsLeft);
+
+  // KPI
+  const totalQty = items.reduce((s, i) => s + i.qty, 0);
+  const totalAvgSales = withData.reduce((s, i) => s + (i.avgMonthlySales || 0), 0);
+  const overallMonths = totalAvgSales ? (totalQty / totalAvgSales).toFixed(1) : "—";
+  document.getElementById("kpiRow").innerHTML = `
+    <div class="stat-tile"><div class="stat-label">目前總庫存</div><div class="stat-value">${totalQty.toLocaleString()}<span class="unit">件</span></div></div>
+    <div class="stat-tile"><div class="stat-label">平均月銷量(全品項)</div><div class="stat-value">${totalAvgSales.toLocaleString(undefined,{maximumFractionDigits:0})}<span class="unit">件/月</span></div></div>
+    <div class="stat-tile"><div class="stat-label">整體庫存可撐</div><div class="stat-value">${overallMonths}<span class="unit">個月</span></div></div>
+  `;
+
+  // bar chart
+  const barchartEl = document.getElementById("barchart");
+  const tooltip = document.getElementById("tooltip");
+  barchartEl.innerHTML = "";
+  const maxMonths = Math.max(1, ...withData.map(d => d.monthsLeft));
+  const axisMax = Math.ceil(maxMonths / 2) * 2 || 2;
+
+  withData.forEach(d => {
+    const status = statusOf(d.monthsLeft);
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `<div class="bar-name">${d.name}</div><div class="bar-track"></div><div class="bar-val">${d.monthsLeft.toFixed(1)} 個月</div>`;
+    const track = row.querySelector(".bar-track");
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = (d.monthsLeft / axisMax * 100) + "%";
+    fill.style.background = statusColorVar[status];
+    fill.addEventListener("mousemove", (e) => {
+      tooltip.style.opacity = "1";
+      tooltip.style.left = (e.clientX + 14) + "px";
+      tooltip.style.top = (e.clientY - 14) + "px";
+      tooltip.innerHTML = `<b>${d.name}</b><br>庫存:${d.qty.toLocaleString()}<br>月均銷量:${d.avgMonthlySales.toFixed(0)}<br>可撐:${d.monthsLeft.toFixed(1)} 個月`;
+    });
+    fill.addEventListener("mouseleave", () => { tooltip.style.opacity = "0"; });
+    track.appendChild(fill);
+    barchartEl.appendChild(row);
+  });
+
+  withoutData.forEach(d => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `<div class="bar-name">${d.name}</div><div class="bar-empty">尚無銷售資料,無法估算</div><div></div>`;
+    barchartEl.appendChild(row);
+  });
+
+  if (!items.length) barchartEl.innerHTML = '<div class="state-msg">篩選條件下沒有資料</div>';
+
+  const axisLabels = document.getElementById("axisLabels");
+  axisLabels.innerHTML = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (axisMax / 4) * i;
+    const span = document.createElement("span");
+    span.style.left = (v / axisMax * 100) + "%";
+    span.textContent = v.toFixed(0);
+    axisLabels.appendChild(span);
+  }
+
+  // table
+  const tbody = document.querySelector("#detailTable tbody");
+  tbody.innerHTML = items.map(d => {
+    const status = statusOf(d.monthsLeft);
+    const chip = status
+      ? `<span class="status-chip ${status}"><span class="status-dot ${status}"></span>${statusLabel[status]}</span>`
+      : `<span class="status-chip warning">尚無銷售資料</span>`;
+    return `<tr>
+      <td>${d.name}</td><td>${d.category || ""}</td><td>${d.location || ""}</td>
+      <td class="num">${d.qty.toLocaleString()}</td><td class="num">${d.safetyStock.toLocaleString()}</td>
+      <td class="num">${d.avgMonthlySales !== null && d.avgMonthlySales !== undefined ? d.avgMonthlySales.toFixed(0) : "—"}</td>
+      <td class="num">${d.monthsLeft !== null && d.monthsLeft !== undefined ? d.monthsLeft.toFixed(1) : "—"}</td>
+      <td>${chip}</td>
+    </tr>`;
+  }).join("");
+}
+
+function populateFilters() {
+  const cats = [...new Set(allItems.map(i => i.category).filter(Boolean))];
+  const locs = [...new Set(allItems.map(i => i.location).filter(Boolean))];
+  const catSel = document.getElementById("filterCategory");
+  const locSel = document.getElementById("filterLocation");
+  cats.forEach(c => catSel.insertAdjacentHTML("beforeend", `<option value="${c}">${c}</option>`));
+  locs.forEach(l => locSel.insertAdjacentHTML("beforeend", `<option value="${l}">${l}</option>`));
+  catSel.addEventListener("change", render);
+  locSel.addEventListener("change", render);
+}
+
+(async function init() {
+  const barchartEl = document.getElementById("barchart");
+  try {
+    const data = await fetchData("inventory");
+    allItems = data.inventory || [];
+    populateFilters();
+    render();
+  } catch (err) {
+    if (err.message === "CONFIG_MISSING") {
+      renderState(barchartEl, "config-missing");
+    } else {
+      renderState(barchartEl, "error", err.message);
+    }
+  }
+})();
+</script>
+</body>
+</html>

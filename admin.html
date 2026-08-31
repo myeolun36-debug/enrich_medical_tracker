@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>編輯資料 — 老闆儀表板</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .whoami { font-size: 12.5px; color: var(--text-secondary); }
+  .whoami b { color: var(--text-primary); }
+  .whoami a { color: var(--series-blue); margin-left: 8px; cursor: pointer; text-decoration: none; }
+  .preview-box {
+    background: var(--page); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-top: 10px; font-size: 13px; line-height: 1.8;
+  }
+  .preview-box .preview-title { font-weight: 600; margin-bottom: 6px; }
+  .preview-actions { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-secondary {
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 16px; font-size: 13.5px; cursor: pointer; font-family: inherit;
+  }
+  .btn-secondary:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+  fieldset { border: none; padding: 0; margin: 0; }
+  fieldset:disabled { opacity: 0.45; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <span class="brand">老闆儀表板 · 編輯資料</span>
+  <a href="index.html">回總覽</a>
+  <span id="whoamiBox" class="whoami" style="margin-left:auto"></span>
+</nav>
+<div class="wrap">
+
+  <div id="gate" class="token-gate">
+    <h1>輸入密碼</h1>
+    <p class="subtitle">每個人有自己的一組密碼(也代表妳的身分,會記錄在編輯紀錄裡)</p>
+    <div class="field"><input id="tokenInput" type="password" placeholder="密碼"></div>
+    <br>
+    <button class="btn-primary" id="unlockBtn">解鎖</button>
+    <p class="form-msg err" id="gateMsg"></p>
+  </div>
+
+  <div id="forms" style="display:none">
+    <h1>編輯資料</h1>
+    <p class="subtitle">填完先按「檢查並送出」,看清楚變更內容再按確認——確認之後才會真的寫進去。</p>
+
+    <div class="card">
+      <h2>📦 新增 / 更新庫存品項</h2>
+      <p class="desc">品項名稱如果跟現有的一樣,會直接更新那一筆(數量整個覆蓋,不是加總);名稱不一樣就新增一筆。</p>
+      <form id="invForm">
+        <fieldset id="invFieldset">
+          <div class="field-row">
+            <div class="field"><label>品項名稱</label><input name="name" list="itemNames" required></div>
+            <div class="field"><label>目前數量</label><input name="qty" type="number" min="0" required></div>
+            <div class="field"><label>分類</label><input name="category"></div>
+            <div class="field"><label>存放地點</label><input name="location"></div>
+            <div class="field"><label>安全庫存量</label><input name="safetyStock" type="number" min="0"></div>
+          </div>
+          <button class="btn-primary" type="submit">檢查並送出</button>
+        </fieldset>
+        <div class="preview-box" id="invPreview" style="display:none"></div>
+        <div class="form-msg" id="invMsg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>🛒 新增銷售紀錄</h2>
+      <p class="desc">同一個月、同一個品項再送一次,數量會用加總的(適合分批登打)。</p>
+      <form id="saleForm">
+        <fieldset id="saleFieldset">
+          <div class="field-row">
+            <div class="field"><label>月份</label><input name="month" type="month" required></div>
+            <div class="field"><label>品項名稱</label><input name="name" list="itemNames" required></div>
+            <div class="field"><label>賣出數量</label><input name="qty" type="number" min="0" required></div>
+          </div>
+          <button class="btn-primary" type="submit">檢查並送出</button>
+        </fieldset>
+        <div class="preview-box" id="salePreview" style="display:none"></div>
+        <div class="form-msg" id="saleMsg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>💰 新增 / 更新現金流</h2>
+      <p class="desc">同一個月再送一次,會覆蓋掉原本那個月的收入/支出(不是加總)。淨額自動算。</p>
+      <form id="cfForm">
+        <fieldset id="cfFieldset">
+          <div class="field-row">
+            <div class="field"><label>月份</label><input name="month" type="month" required></div>
+            <div class="field"><label>收入</label><input name="income" type="number" min="0" required></div>
+            <div class="field"><label>支出</label><input name="expense" type="number" min="0" required></div>
+          </div>
+          <button class="btn-primary" type="submit">檢查並送出</button>
+        </fieldset>
+        <div class="preview-box" id="cfPreview" style="display:none"></div>
+        <div class="form-msg" id="cfMsg"></div>
+      </form>
+    </div>
+
+    <datalist id="itemNames"></datalist>
+
+    <div class="card">
+      <h2>📜 最近的編輯紀錄</h2>
+      <p class="desc">誰、什麼時候、改了什麼——出狀況時回來這裡排查</p>
+      <table id="historyTable">
+        <thead><tr><th>時間</th><th>編輯人</th><th>分頁</th><th>項目</th><th>動作</th><th>內容</th></tr></thead>
+        <tbody><tr><td colspan="6" class="state-msg">讀取中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="assets/config.js"></script>
+<script src="assets/api.js"></script>
+<script>
+const TOKEN_KEY = "boss_dashboard_admin_token";
+const NAME_KEY = "boss_dashboard_admin_name";
+
+let inventoryCache = [];
+let cashflowCache = [];
+
+function getToken() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
+function getName() { try { return localStorage.getItem(NAME_KEY) || ""; } catch (e) { return ""; } }
+function setIdentity(token, name) {
+  try { localStorage.setItem(TOKEN_KEY, token); localStorage.setItem(NAME_KEY, name); } catch (e) {}
+}
+function clearIdentity() {
+  try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(NAME_KEY); } catch (e) {}
+  location.reload();
+}
+
+async function verifyToken(token) {
+  const base = window.APPS_SCRIPT_URL;
+  const res = await fetch(base + "?type=whoami&token=" + encodeURIComponent(token));
+  return res.json();
+}
+
+function showWhoami(name) {
+  document.getElementById("whoamiBox").innerHTML = `目前身分:<b>${name}</b><a id="logoutLink">換人</a>`;
+  document.getElementById("logoutLink").addEventListener("click", clearIdentity);
+}
+
+function showForms() {
+  document.getElementById("gate").style.display = "none";
+  document.getElementById("forms").style.display = "block";
+  refreshCaches();
+  loadHistory();
+}
+
+async function unlock() {
+  const t = document.getElementById("tokenInput").value.trim();
+  const gateMsg = document.getElementById("gateMsg");
+  if (!t) return;
+  gateMsg.textContent = "確認中…";
+  try {
+    const res = await verifyToken(t);
+    if (res.error) {
+      gateMsg.textContent = "✗ " + res.error;
+      return;
+    }
+    setIdentity(t, res.name);
+    showWhoami(res.name);
+    gateMsg.textContent = "";
+    showForms();
+  } catch (err) {
+    gateMsg.textContent = err.message === "CONFIG_MISSING"
+      ? "還沒設定 APPS_SCRIPT_URL,檢查 assets/config.js"
+      : "✗ 連線失敗:" + err.message;
+  }
+}
+
+document.getElementById("unlockBtn").addEventListener("click", unlock);
+document.getElementById("tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });
+
+async function refreshCaches() {
+  try {
+    const invData = await fetchData("inventory");
+    inventoryCache = invData.inventory || [];
+    const list = document.getElementById("itemNames");
+    list.innerHTML = "";
+    inventoryCache.forEach(i => {
+      const opt = document.createElement("option");
+      opt.value = i.name;
+      list.appendChild(opt);
+    });
+  } catch (e) { /* 名單抓不到就算了,不影響手動打字新增 */ }
+  try {
+    const cfData = await fetchData("cashflow");
+    cashflowCache = cfData.cashflow || [];
+  } catch (e) { /* 沒關係,現金流表單一樣能送出,只是預覽看不到舊值 */ }
+}
+
+async function loadHistory() {
+  const tbody = document.querySelector("#historyTable tbody");
+  try {
+    const base = window.APPS_SCRIPT_URL;
+    const res = await fetch(base + "?type=history");
+    const data = await res.json();
+    const rows = data.history || [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="state-msg">還沒有編輯紀錄</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr><td>${r.time}</td><td>${r.editor}</td><td>${r.sheet}</td><td>${r.item}</td><td>${r.action}</td><td>${r.detail}</td></tr>
+    `).join("");
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" class="state-msg error">紀錄讀取失敗</td></tr>';
+  }
+}
+
+// ---------- 通用的「檢查 → 確認送出」流程 ----------
+function setupForm(opts) {
+  // opts: formId, fieldsetId, previewId, msgId, action, fields, buildPreview(data) → { html, }
+  const form = document.getElementById(opts.formId);
+  const fieldset = document.getElementById(opts.fieldsetId);
+  const preview = document.getElementById(opts.previewId);
+  const msg = document.getElementById(opts.msgId);
+  let pendingData = null;
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = {};
+    opts.fields.forEach(f => { data[f] = fd.get(f); });
+    pendingData = data;
+
+    preview.innerHTML = opts.buildPreview(data) + `
+      <div class="preview-actions">
+        <button type="button" class="btn-primary" id="${opts.formId}-confirm">✅ 確認送出</button>
+        <button type="button" class="btn-secondary" id="${opts.formId}-back">↩️ 返回修改</button>
+      </div>`;
+    preview.style.display = "block";
+    fieldset.disabled = true;
+    msg.textContent = "";
+
+    document.getElementById(opts.formId + "-back").addEventListener("click", () => {
+      preview.style.display = "none";
+      fieldset.disabled = false;
+    });
+    document.getElementById(opts.formId + "-confirm").addEventListener("click", async () => {
+      msg.textContent = "送出中…";
+      msg.className = "form-msg";
+      try {
+        await postData(opts.action, pendingData, getToken());
+        msg.textContent = "✓ 已更新,老闆那邊重新整理就看得到";
+        msg.className = "form-msg ok";
+        form.reset();
+        preview.style.display = "none";
+        fieldset.disabled = false;
+        refreshCaches();
+        loadHistory();
+      } catch (err) {
+        msg.textContent = "✗ " + err.message;
+        msg.className = "form-msg err";
+      }
+    });
+  });
+}
+
+setupForm({
+  formId: "invForm", fieldsetId: "invFieldset", previewId: "invPreview", msgId: "invMsg",
+  action: "upsertInventory", fields: ["name","qty","category","location","safetyStock"],
+  buildPreview(data) {
+    const existing = inventoryCache.find(i => i.name === data.name);
+    const title = existing ? `即將更新「${data.name}」` : `即將新增品項「${data.name}」`;
+    let rows = "";
+    if (existing) {
+      rows += `數量:${existing.qty} → <b>${data.qty}</b><br>`;
+      rows += `分類:${existing.category || "(空)"} → <b>${data.category || "(空)"}</b><br>`;
+      rows += `存放地點:${existing.location || "(空)"} → <b>${data.location || "(空)"}</b><br>`;
+      rows += `安全庫存量:${existing.safetyStock} → <b>${data.safetyStock || 0}</b>`;
+    } else {
+      rows += `數量:<b>${data.qty}</b>、分類:<b>${data.category || "(空)"}</b>、`;
+      rows += `存放地點:<b>${data.location || "(空)"}</b>、安全庫存量:<b>${data.safetyStock || 0}</b>`;
+    }
+    return `<div class="preview-title">${title}</div>${rows}`;
+  }
+});
+
+setupForm({
+  formId: "saleForm", fieldsetId: "saleFieldset", previewId: "salePreview", msgId: "saleMsg",
+  action: "addSale", fields: ["month","name","qty"],
+  buildPreview(data) {
+    return `<div class="preview-title">即將登錄銷售紀錄</div>
+      ${data.month} — ${data.name}:<b>+${data.qty}</b> 件(如果這個月這個品項已經有紀錄,會用加總的)`;
+  }
+});
+
+setupForm({
+  formId: "cfForm", fieldsetId: "cfFieldset", previewId: "cfPreview", msgId: "cfMsg",
+  action: "upsertCashflow", fields: ["month","income","expense"],
+  buildPreview(data) {
+    const existing = cashflowCache.find(c => c.month === data.month);
+    const title = existing ? `即將更新 ${data.month} 的現金流` : `即將新增 ${data.month} 的現金流`;
+    let rows = "";
+    if (existing) {
+      rows += `收入:${existing.income.toLocaleString()} → <b>${Number(data.income).toLocaleString()}</b><br>`;
+      rows += `支出:${existing.expense.toLocaleString()} → <b>${Number(data.expense).toLocaleString()}</b>`;
+    } else {
+      rows += `收入:<b>${Number(data.income).toLocaleString()}</b>、支出:<b>${Number(data.expense).toLocaleString()}</b>`;
+    }
+    return `<div class="preview-title">${title}</div>${rows}`;
+  }
+});
+
+// 如果之前解鎖過,這台裝置會記住身分,直接進表單頁(但還是要跟伺服器確認密碼還有效)
+(async function init() {
+  const t = getToken();
+  if (!t) return;
+  try {
+    const res = await verifyToken(t);
+    if (res.name) {
+      showWhoami(res.name);
+      showForms();
+    } else {
+      clearIdentity();
+    }
+  } catch (e) { /* 網路問題,留在解鎖畫面讓使用者手動再試 */ }
+})();
+</script>
+</body>
+</html>
