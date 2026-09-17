@@ -58,10 +58,31 @@
         <tr>
           <th>品項</th><th class="num">累計數量</th><th class="num">累計金額</th>
           <th>營收佔比</th><th class="num">近12個月數量</th><th class="num">近12個月金額</th>
+          <th class="num">加權平均成本</th><th class="num">近12個月估計毛利率</th>
         </tr>
       </thead>
-      <tbody><tr><td colspan="6" class="state-msg">讀取中…</td></tr></tbody>
+      <tbody><tr><td colspan="8" class="state-msg">讀取中…</td></tr></tbody>
     </table>
+  </div>
+
+  <div class="card">
+    <h2>業績獎金參考值</h2>
+    <p class="desc" id="bonusDesc">參考業界經銷/批發產業的抽成慣例,抓出一個「大概可以給多少業績獎金」的參考區間</p>
+    <div id="bonusRefRow" class="kpi-row"></div>
+    <p class="note" id="bonusCaveat" style="font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.6;"></p>
+  </div>
+
+  <div class="card">
+    <h2>特定品項在特定區間賺了多少</h2>
+    <p class="desc">選一個品項、選一段起訖月份,看這段區間總共賣了多少、賺了多少營收;有進貨成本資料的品項還會多算一欄估計毛利</p>
+    <div class="controls">
+      <select id="rangeItemSelect"></select>
+      <span style="font-size:12.5px;color:var(--text-secondary)">從</span>
+      <select id="rangeFromSelect"></select>
+      <span style="font-size:12.5px;color:var(--text-secondary)">到</span>
+      <select id="rangeToSelect"></select>
+    </div>
+    <div id="rangeResultRow" class="kpi-row" style="margin-top:14px;"></div>
   </div>
 
   <div class="card">
@@ -138,7 +159,7 @@ function drawYearly(overallYearly) {
 function renderRanking(ranking) {
   const tbody = document.querySelector("#rankingTable tbody");
   if (!ranking.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="state-msg">還沒有資料</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="state-msg">還沒有資料</td></tr>';
     return;
   }
   tbody.innerHTML = ranking.map(r => `
@@ -149,6 +170,8 @@ function renderRanking(ranking) {
       <td><span class="share-bar-track"><span class="share-bar-fill" style="width:${(r.share*100).toFixed(0)}%"></span></span>${(r.share*100).toFixed(1)}%</td>
       <td class="num">${fmtNum(r.last12Qty)}</td>
       <td class="num">${fmtMoney(r.last12Revenue)}</td>
+      <td class="num">${r.avgCost !== null ? fmtMoney(r.avgCost) : '<span class="state-msg" style="font-size:11px">尚無成本資料</span>'}</td>
+      <td class="num">${r.last12MarginPct !== null ? (r.last12MarginPct*100).toFixed(1) + '%' : '—'}</td>
     </tr>
   `).join("");
 }
@@ -156,6 +179,88 @@ function renderRanking(ranking) {
 function populateItemSelect(ranking) {
   const sel = document.getElementById("itemSelect");
   sel.innerHTML = ranking.map(r => `<option value="${r.name}">${r.name}</option>`).join("");
+}
+
+// ---- 業績獎金參考值 ----
+// 研究來源(2026-09 查證,詳見對話紀錄跟專案文件):
+//  - 一般產品/經銷類的「營收抽成」業界常見區間約 5%~15%(CaptivateIQ、SmallBizTrends 等產業benchmark整理)
+//  - 「毛利抽成」(比較嚴謹、能反映真實獲利)業界常見區間約 20%~40%(RepHunter 針對經銷/廠商代表的指引)
+//    ——尤其適合像妳們這種「國外進貨、成本會浮動」的產業,因為毛利抽成不會讓成本上升的月份還發出過多獎金
+//  - 2026-09-18 更新:老闆提供了「進退貨明細表」的實際進貨成本,已經可以算出加權平均成本、
+//    改用毛利當基準了。哪個品項還沒有成本資料(avgCost 是 null),就先繼續用營收 5~15% 頂著,
+//    等之後補齊成本資料再自動變成毛利算法——不用改網頁,補資料就會自動生效。
+function renderBonusReference(ranking) {
+  const withCost = ranking.filter(r => r.avgCost !== null);
+  const withoutCost = ranking.filter(r => r.avgCost === null);
+
+  const last12Total = ranking.reduce((s, r) => s + r.last12Revenue, 0);
+  const profitTotal = withCost.reduce((s, r) => s + r.last12Profit, 0);
+  const costBasisRevenue = withCost.reduce((s, r) => s + r.last12Revenue, 0);
+  const noCostRevenue = withoutCost.reduce((s, r) => s + r.last12Revenue, 0);
+  const blendedMarginPct = costBasisRevenue ? profitTotal / costBasisRevenue : null;
+
+  const low = profitTotal * 0.20 + noCostRevenue * 0.05;
+  const high = profitTotal * 0.40 + noCostRevenue * 0.15;
+
+  document.getElementById("bonusRefRow").innerHTML = `
+    <div class="stat-tile"><div class="stat-label">近12個月全品項營收</div><div class="stat-value">${fmtMoney(last12Total)}</div></div>
+    <div class="stat-tile"><div class="stat-label">已知成本品項的估計毛利</div><div class="stat-value">${fmtMoney(profitTotal)}</div></div>
+    <div class="stat-tile"><div class="stat-label">估計毛利率</div><div class="stat-value">${blendedMarginPct !== null ? (blendedMarginPct*100).toFixed(1)+'%' : '—'}</div></div>
+    <div class="stat-tile"><div class="stat-label">保守參考</div><div class="stat-value">${fmtMoney(low)}</div></div>
+    <div class="stat-tile"><div class="stat-label">積極參考</div><div class="stat-value">${fmtMoney(high)}</div></div>
+  `;
+
+  const missingNames = withoutCost.map(r => r.name).join("、");
+  document.getElementById("bonusCaveat").innerHTML =
+    `✅ 這組區間<b>已經改用毛利當基準</b>了:有進貨成本資料的品項,用「近12個月估計毛利 × 20%~40%」(業界毛利抽成常見區間);` +
+    (withoutCost.length
+      ? `目前<b>${missingNames}</b>還沒有進貨成本資料,這幾項先繼續用「近12個月營收 × 5%~15%」頂著(業界一般營收抽成常見區間),之後補齊成本資料會自動改算毛利、不用重新做這個功能。`
+      : `所有品項都已經有成本資料了,這組區間全部是用毛利算的。`) +
+    ` 毛利是用「加權平均成本」估的(同一品項不同批進貨單價不同,取總金額除以總數量),跟真正每一筆訂單的實際毛利會有些微差距,實際要不要用、用多少,還是要妳自己跟老闆判斷——不是精算過的最終建議。`;
+}
+
+// ---- 特定品項在特定區間賺了多少 ----
+function populateRangeSelectors(perf) {
+  const itemSel = document.getElementById("rangeItemSelect");
+  const fromSel = document.getElementById("rangeFromSelect");
+  const toSel = document.getElementById("rangeToSelect");
+  itemSel.innerHTML = perf.ranking.map(r => `<option value="${r.name}">${r.name}</option>`).join("");
+
+  const firstItem = perf.ranking[0].name;
+  const months = (perf.monthlyByItem[firstItem] || []).map(d => d.month);
+  const monthOptions = months.map(m => `<option value="${m}">${m}</option>`).join("");
+  fromSel.innerHTML = monthOptions;
+  toSel.innerHTML = monthOptions;
+  fromSel.value = months[0];
+  toSel.value = months[months.length - 1];
+
+  function computeAndRender() {
+    const name = itemSel.value;
+    const from = fromSel.value;
+    const to = toSel.value;
+    const series = perf.monthlyByItem[name] || [];
+    const inRange = series.filter(d => d.month >= from && d.month <= to);
+    const qty = inRange.reduce((s, d) => s + d.qty, 0);
+    const revenue = inRange.reduce((s, d) => s + d.revenue, 0);
+    const monthCount = inRange.length;
+    const cost = (perf.costByItem && perf.costByItem[name]) ? perf.costByItem[name].avgCost : null;
+    const profitTile = cost !== null
+      ? `<div class="stat-tile"><div class="stat-label">估計毛利(用加權平均成本 ${fmtMoney(cost)})</div><div class="stat-value">${fmtMoney(revenue - cost*qty)}</div></div>`
+      : `<div class="stat-tile"><div class="stat-label">估計毛利</div><div class="stat-value" style="font-size:14px">尚無成本資料</div></div>`;
+    document.getElementById("rangeResultRow").innerHTML = monthCount === 0 || from > to
+      ? '<div class="state-msg">請選一段有效的區間(起始月份不能晚於結束月份)</div>'
+      : `
+        <div class="stat-tile"><div class="stat-label">${name}｜${from} ~ ${to}</div><div class="stat-value">${fmtMoney(revenue)}</div></div>
+        <div class="stat-tile"><div class="stat-label">這段區間銷售數量</div><div class="stat-value">${fmtNum(qty)}<span class="unit">件</span></div></div>
+        <div class="stat-tile"><div class="stat-label">區間內月數</div><div class="stat-value">${monthCount}<span class="unit">個月</span></div></div>
+        ${profitTile}
+      `;
+  }
+
+  itemSel.addEventListener("change", computeAndRender);
+  fromSel.addEventListener("change", computeAndRender);
+  toSel.addEventListener("change", computeAndRender);
+  computeAndRender();
 }
 
 function drawItemTrend(name, metric) {
@@ -245,6 +350,8 @@ document.getElementById("itemSelect").addEventListener("change", (e) => {
     renderRanking(perf.ranking);
     populateItemSelect(perf.ranking);
     drawItemTrend(perf.ranking[0].name, currentMetric);
+    renderBonusReference(perf.ranking);
+    populateRangeSelectors(perf);
   } catch (err) {
     const msg = err.message === "CONFIG_MISSING" ? "config-missing" : "error";
     renderState(container, msg, err.message);

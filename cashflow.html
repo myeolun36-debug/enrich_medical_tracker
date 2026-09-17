@@ -50,6 +50,20 @@
   </div>
 
   <div class="card">
+    <h2>營收情境試算</h2>
+    <p class="desc" id="scenarioBase">以最新月份的實際收入為基準,試算如果營收增加或減少幾個百分比,淨額會變成多少(假設支出不變)</p>
+    <div class="controls" style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <label style="font-size:12.5px;color:var(--text-secondary)">自訂百分比:</label>
+      <input type="number" id="scenarioCustomPct" value="0" step="1" style="width:80px;font-size:12.5px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-family:inherit;">
+      <span style="font-size:12.5px;color:var(--text-secondary)">%</span>
+    </div>
+    <table id="scenarioTable">
+      <thead><tr><th>情境</th><th class="num">新營收</th><th class="num">新淨額</th><th class="num">淨額變化</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
     <h2>明細表</h2>
     <table id="detailTable">
       <thead><tr><th>月份</th><th class="num">收入</th><th class="num">支出</th><th class="num">淨額</th></tr></thead>
@@ -151,6 +165,42 @@ function drawNet(data) {
   });
 }
 
+function renderScenario(latest) {
+  document.getElementById("scenarioBase").textContent =
+    `以最新月份(${latest.month})的實際收入 ${fmtMoney(latest.income)} 為基準,試算如果營收增加或減少幾個百分比,淨額會變成多少(假設支出維持 ${fmtMoney(latest.expense)} 不變)`;
+
+  const presets = [-20, -10, -5, 0, 5, 10, 20];
+  const customInput = document.getElementById("scenarioCustomPct");
+
+  function computeRow(pct) {
+    const newIncome = latest.income * (1 + pct / 100);
+    const newNet = newIncome - latest.expense;
+    const netChange = newNet - latest.net;
+    return { pct, newIncome, newNet, netChange };
+  }
+
+  function render() {
+    const customPct = Number(customInput.value) || 0;
+    const rows = presets.map(computeRow);
+    const customRow = computeRow(customPct);
+
+    const rowHtml = (r, label, highlight) => `
+      <tr${highlight ? ' style="background:var(--row-highlight,rgba(90,140,255,0.08))"' : ''}>
+        <td>${label}</td>
+        <td class="num">${fmtMoney(r.newIncome)}</td>
+        <td class="num">${fmtMoney(r.newNet)}</td>
+        <td class="num">${r.netChange >= 0 ? '+' : ''}${fmtMoney(r.netChange)}</td>
+      </tr>`;
+
+    let html = rows.map(r => rowHtml(r, r.pct === 0 ? "目前(0%)" : (r.pct > 0 ? `+${r.pct}%` : `${r.pct}%`), r.pct === 0)).join("");
+    html += rowHtml(customRow, `自訂 ${customPct >= 0 ? '+' : ''}${customPct}%`, true);
+    document.querySelector("#scenarioTable tbody").innerHTML = html;
+  }
+
+  customInput.addEventListener("input", render);
+  render();
+}
+
 (async function init() {
   const container = document.getElementById("incomeExpenseChart").closest(".card");
   try {
@@ -174,6 +224,7 @@ function drawNet(data) {
 
     drawIncomeExpense(data);
     drawNet(data);
+    renderScenario(latest);
 
     document.querySelector("#detailTable tbody").innerHTML = data.map(d => `
       <tr><td>${d.month}</td><td class="num">${fmtMoney(d.income)}</td><td class="num">${fmtMoney(d.expense)}</td><td class="num">${fmtMoney(d.net)}</td></tr>
