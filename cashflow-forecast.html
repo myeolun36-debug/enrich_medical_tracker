@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>現金流量預測 — Enrich Medical Dashboard</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .banner {
+    background: var(--warning-bg); border: 1px solid var(--warning);
+    border-radius: 10px; padding: 14px 16px; font-size: 12.5px; line-height: 1.8;
+    color: var(--text-primary); margin-bottom: 20px;
+  }
+  .banner b { color: var(--text-primary); }
+  .stack-bar { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin: 10px 0 8px; background: var(--grid); }
+  .stack-seg { height: 100%; }
+  .seg-overdue { background: var(--critical); }
+  .seg-within7 { background: var(--warning); }
+  .seg-within30 { background: var(--series-blue); }
+  .seg-beyond { background: var(--good); }
+  .bucket-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; }
+  .bucket-legend .legend-item { display: flex; align-items: center; gap: 6px; }
+  .empty-note { font-size: 12.5px; color: var(--text-muted); padding: 10px 0; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <span class="brand">Enrich Medical Dashboard</span>
+  <a href="index.html">總覽</a>
+  <a href="inventory.html">庫存</a>
+  <a href="cashflow.html">現金流</a>
+  <a href="cashflow-forecast.html" class="active">現金流量預測</a>
+  <a href="sales-performance.html">銷售表現</a>
+  <a href="admin.html">✏️ 編輯資料</a>
+</nav>
+<div class="wrap">
+  <h1>現金流量預測</h1>
+  <p class="subtitle">現金水位 + 應收帳款 + 應付帳款 + 在途庫存,整合起來看「接下來錢的方向大概對不對」</p>
+
+  <div class="banner">
+    ⚠️ 這是給自己看方向用的簡化管理報表,<b>不是正式的資產負債表/現金流量表</b>。「現金水位」是用「現金流事件」目前累計淨額估的,
+    不是對過帳的真正銀行餘額(沒有期初餘額,也不保證每個月都有完整記錄)。應收/應付的帳齡分佈是用「先到期的先沖」(FIFO)簡化估算出來的,
+    不是逐筆對發票/請款單沖帳,抓的是「大概還有多少沒收、多少沒付、大概什麼時候」的方向感。
+  </div>
+
+  <div id="kpiRow" class="kpi-row"></div>
+
+  <div class="card">
+    <h2>🧾 應收帳款帳齡</h2>
+    <p class="desc">客戶還沒付給妳的錢,依到期日分佈的估計</p>
+    <div id="arBucketBox"></div>
+    <table id="arPartyTable" style="margin-top:14px">
+      <thead><tr><th>客戶</th><th class="num">估計未收金額</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🧾 應付帳款帳齡</h2>
+    <p class="desc">妳還沒付給廠商的錢,依到期日分佈的估計</p>
+    <div id="apBucketBox"></div>
+    <table id="apPartyTable" style="margin-top:14px">
+      <thead><tr><th>廠商</th><th class="num">估計未付金額</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🚚 在途庫存(已下單、還沒到貨)</h2>
+    <p class="desc">還在路上的貨,不算進現有庫存量,但金額之後大概要付出去</p>
+    <div id="inTransitBox"></div>
+    <table id="inTransitTable" style="margin-top:14px">
+      <thead><tr><th>品項</th><th class="num">在途數量</th><th class="num">在途金額</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="assets/config.js"></script>
+<script src="assets/api.js"></script>
+<script>
+const fmtMoney = n => "$" + Math.round(n).toLocaleString();
+const BUCKET_LABELS = { overdue: "已逾期", within7: "7天內到期", within30: "30天內到期", beyond: "30天以後" };
+const BUCKET_CLASS = { overdue: "seg-overdue", within7: "seg-within7", within30: "seg-within30", beyond: "seg-beyond" };
+
+function renderAging(prefix, aging) {
+  const box = document.getElementById(prefix + "BucketBox");
+  const tbody = document.querySelector("#" + prefix + "PartyTable tbody");
+  if (!aging || aging.total <= 0) {
+    box.innerHTML = '<div class="empty-note">目前沒有未沖銷的餘額(還沒記錄任何事件,或已經全部收/付清)</div>';
+    tbody.innerHTML = '<tr><td colspan="2" class="state-msg">沒有資料</td></tr>';
+    return;
+  }
+  const total = aging.total;
+  const order = ["overdue", "within7", "within30", "beyond"];
+  let bar = '<div class="stack-bar">';
+  order.forEach(k => {
+    const v = aging.buckets[k] || 0;
+    if (v <= 0) return;
+    const pct = (v / total * 100).toFixed(2);
+    bar += `<div class="stack-seg ${BUCKET_CLASS[k]}" style="width:${pct}%" title="${BUCKET_LABELS[k]}:${fmtMoney(v)}"></div>`;
+  });
+  bar += '</div>';
+  let legend = '<div class="bucket-legend">';
+  order.forEach(k => {
+    const v = aging.buckets[k] || 0;
+    legend += `<span class="legend-item"><span class="legend-dot" style="background:var(${
+      k === "overdue" ? "--critical" : k === "within7" ? "--warning" : k === "within30" ? "--series-blue" : "--good"
+    })"></span>${BUCKET_LABELS[k]}:${fmtMoney(v)}</span>`;
+  });
+  legend += '</div>';
+  box.innerHTML = `<div class="stat-note" style="margin-bottom:6px">估計未沖銷總額:<b style="color:var(--text-primary)">${fmtMoney(total)}</b></div>${bar}${legend}`;
+
+  tbody.innerHTML = aging.byParty.length
+    ? aging.byParty.map(p => `<tr><td>${p.party || "(未填名稱)"}</td><td class="num">${fmtMoney(p.amount)}</td></tr>`).join("")
+    : '<tr><td colspan="2" class="state-msg">沒有資料</td></tr>';
+}
+
+function renderInTransit(inTransit) {
+  const box = document.getElementById("inTransitBox");
+  const tbody = document.querySelector("#inTransitTable tbody");
+  if (!inTransit || !inTransit.byItem.length) {
+    box.innerHTML = '<div class="empty-note">目前沒有在途庫存(還沒記錄「訂購中」事件,或已經全部到貨沖銷完畢)</div>';
+    tbody.innerHTML = '<tr><td colspan="3" class="state-msg">沒有資料</td></tr>';
+    return;
+  }
+  box.innerHTML = `<div class="stat-note">在途總數量:<b style="color:var(--text-primary)">${inTransit.totalQty.toLocaleString()}</b> 件、在途總金額:<b style="color:var(--text-primary)">${fmtMoney(inTransit.totalAmount)}</b></div>`;
+  tbody.innerHTML = inTransit.byItem.map(i => `
+    <tr><td>${i.name}</td><td class="num">${i.qty.toLocaleString()}</td><td class="num">${fmtMoney(i.amount)}</td></tr>
+  `).join("");
+}
+
+(async function init() {
+  const container = document.querySelector(".wrap");
+  try {
+    const res = await fetchData("cashflowForecast");
+    const fc = res.cashflowForecast || {};
+    const arTotal = fc.receivables ? fc.receivables.total : 0;
+    const apTotal = fc.payables ? fc.payables.total : 0;
+    const inTransitAmount = fc.inTransit ? fc.inTransit.totalAmount : 0;
+    const roughNet = (fc.cashPosition || 0) + arTotal - apTotal;
+
+    document.getElementById("kpiRow").innerHTML = `
+      <div class="stat-tile">
+        <div class="stat-label">現金水位</div>
+        <div class="stat-value">${fmtMoney(fc.cashPosition || 0)}</div>
+        <div class="stat-note">用現金流事件累計淨額估的,不是真正銀行餘額</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">應收帳款(未收)</div>
+        <div class="stat-value">${fmtMoney(arTotal)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">應付帳款(未付)</div>
+        <div class="stat-value">${fmtMoney(apTotal)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">在途庫存金額</div>
+        <div class="stat-value">${fmtMoney(inTransitAmount)}</div>
+        <div class="stat-note">已下單、還沒到貨,之後大概要付這筆錢</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">粗估淨部位</div>
+        <div class="stat-value">${fmtMoney(roughNet)}</div>
+        <div class="stat-note">現金 + 應收 − 應付,還沒扣在途庫存的錢,純粹抓方向</div>
+      </div>
+    `;
+
+    renderAging("ar", fc.receivables);
+    renderAging("ap", fc.payables);
+    renderInTransit(fc.inTransit);
+  } catch (err) {
+    const msg = err.message === "CONFIG_MISSING" ? "config-missing" : "error";
+    renderState(container, msg, err.message);
+  }
+})();
+</script>
+</body>
+</html>

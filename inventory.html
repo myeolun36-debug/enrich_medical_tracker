@@ -27,6 +27,7 @@
   <a href="index.html">總覽</a>
   <a href="inventory.html" class="active">庫存</a>
   <a href="cashflow.html">現金流</a>
+  <a href="cashflow-forecast.html">現金流量預測</a>
   <a href="sales-performance.html">銷售表現</a>
   <a href="admin.html">✏️ 編輯資料</a>
 </nav>
@@ -60,6 +61,7 @@
           <th>品項名稱</th><th>分類</th><th>存放地點</th>
           <th class="num">目前庫存</th><th class="num">安全庫存量</th>
           <th class="num">月均銷量</th><th class="num">可撐月數</th><th>狀態</th>
+          <th class="num">在途庫存(訂購中)</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -158,12 +160,16 @@ function render() {
     const chip = status
       ? `<span class="status-chip ${status}"><span class="status-dot ${status}"></span>${statusLabel[status]}</span>`
       : `<span class="status-chip warning">尚無銷售資料</span>`;
+    const inTransit = d.inTransitQty
+      ? `${d.inTransitQty.toLocaleString()}件` + (d.inTransitAmount ? `($${Math.round(d.inTransitAmount).toLocaleString()})` : "")
+      : "—";
     return `<tr>
       <td>${d.name}</td><td>${d.category || ""}</td><td>${d.location || ""}</td>
       <td class="num">${d.qty.toLocaleString()}</td><td class="num">${d.safetyStock.toLocaleString()}</td>
       <td class="num">${d.avgMonthlySales !== null && d.avgMonthlySales !== undefined ? d.avgMonthlySales.toFixed(0) : "—"}</td>
       <td class="num">${d.monthsLeft !== null && d.monthsLeft !== undefined ? d.monthsLeft.toFixed(1) : "—"}</td>
       <td>${chip}</td>
+      <td class="num">${inTransit}</td>
     </tr>`;
   }).join("");
 }

@@ -32,6 +32,7 @@
 <nav class="topnav">
   <span class="brand">Enrich Medical Dashboard · 編輯資料</span>
   <a href="index.html">回總覽</a>
+  <a href="cashflow-forecast.html">現金流量預測</a>
   <a href="sales-performance.html">銷售表現</a>
   <span id="whoamiBox" class="whoami" style="margin-left:auto"></span>
 </nav>
@@ -81,6 +82,7 @@
                 <option value="銷售">銷售(賣掉了)</option>
                 <option value="移倉">移倉(從一個地點搬到另一個)</option>
                 <option value="盤點調整">盤點調整(盤點後手動校正)</option>
+                <option value="訂購中">訂購中(下單了,還沒到貨)</option>
               </select>
             </div>
             <div class="field"><label>品項名稱</label><select name="name" id="movName" required></select></div>
@@ -90,6 +92,8 @@
           <div class="field-row">
             <div class="field" id="movFromField"><label>來源地點</label><input name="fromLocation" id="movFrom" placeholder="例如:倉庫A"></div>
             <div class="field" id="movToField"><label id="movToLabel">目的地點</label><input name="toLocation" id="movTo" placeholder="例如:辦公室"></div>
+            <div class="field" id="movAmountField"><label>金額(選填)</label><input name="amount" id="movAmount" type="number" min="0" placeholder="這筆訂單的金額"></div>
+            <div class="field" id="movExpectedArrivalField"><label>預計到貨日(選填)</label><input name="expectedArrival" id="movExpectedArrival" type="date"></div>
             <div class="field"><label>備註(選填)</label><input name="note"></div>
           </div>
           <p class="hint" id="movHint"></p>
@@ -124,7 +128,69 @@
       </form>
     </div>
 
+    <div class="card">
+      <h2>🧾 新增應收帳款事件</h2>
+      <p class="desc">客戶欠妳的錢——期初(先抓一個起點總額)、開立(認列一筆新的應收款)、收款(收到錢了)。系統會自動用「先到期的先沖」估算帳齡分佈,是簡化估計,不是逐筆對帳。</p>
+      <form id="arForm">
+        <fieldset id="arFieldset">
+          <div class="field-row">
+            <div class="field"><label>日期</label><input name="date" type="date" required></div>
+            <div class="field">
+              <label>事件類型</label>
+              <select name="type" required>
+                <option value="期初">期初(建立起點餘額)</option>
+                <option value="開立">開立(新的應收款)</option>
+                <option value="收款">收款(收到錢了)</option>
+              </select>
+            </div>
+            <div class="field"><label>客戶</label><input name="party" list="arPartyNames" required></div>
+            <div class="field"><label>金額</label><input name="amount" type="number" min="0" required></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>到期日(選填)</label><input name="dueDate" type="date"></div>
+            <div class="field"><label>備註(選填)</label><input name="note"></div>
+          </div>
+          <p class="hint">「期初」跟「開立」不確定到期日的話可以留空(帳齡分析會用當天日期當到期日算)。</p>
+          <button class="btn-primary" type="submit">檢查並送出</button>
+        </fieldset>
+        <div class="preview-box" id="arPreview" style="display:none"></div>
+        <div class="form-msg" id="arMsg"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>🧾 新增應付帳款事件</h2>
+      <p class="desc">欠廠商的錢——邏輯跟應收帳款完全對稱。期初(起點總額)、開立(新的應付款/請款單)、付款(付出去了)。</p>
+      <form id="apForm">
+        <fieldset id="apFieldset">
+          <div class="field-row">
+            <div class="field"><label>日期</label><input name="date" type="date" required></div>
+            <div class="field">
+              <label>事件類型</label>
+              <select name="type" required>
+                <option value="期初">期初(建立起點餘額)</option>
+                <option value="開立">開立(新的應付款/請款單)</option>
+                <option value="付款">付款(付出去了)</option>
+              </select>
+            </div>
+            <div class="field"><label>廠商</label><input name="party" list="apPartyNames" required></div>
+            <div class="field"><label>金額</label><input name="amount" type="number" min="0" required></div>
+          </div>
+          <div class="field-row">
+            <div class="field"><label>到期日(選填)</label><input name="dueDate" type="date"></div>
+            <div class="field"><label>備註(選填)</label><input name="note"></div>
+          </div>
+          <p class="hint">「期初」跟「開立」不確定到期日的話可以留空(帳齡分析會用當天日期當到期日算)。</p>
+          <button class="btn-primary" type="submit">檢查並送出</button>
+        </fieldset>
+        <div class="preview-box" id="apPreview" style="display:none"></div>
+        <div class="form-msg" id="apMsg"></div>
+      </form>
+    </div>
+
     <datalist id="itemNames"></datalist>
+    <datalist id="arPartyNames"></datalist>
+    <datalist id="apPartyNames"></datalist>
 
     <div class="card">
       <h2>📜 最近的編輯紀錄</h2>
@@ -172,6 +238,8 @@ function showForms() {
   const today = new Date().toISOString().slice(0, 10);
   document.querySelector('#movForm input[name="date"]').value = today;
   document.querySelector('#cfForm input[name="date"]').value = today;
+  document.querySelector('#arForm input[name="date"]').value = today;
+  document.querySelector('#apForm input[name="date"]').value = today;
   refreshCaches();
   loadHistory();
 }
@@ -220,6 +288,22 @@ async function refreshCaches() {
     if (prevVal && inventoryCache.some(i => i.name === prevVal)) movSelect.value = prevVal;
     updateCurQtyHint();
   } catch (e) { /* 名單抓不到就算了,品項主檔表單一樣能手動打字新增 */ }
+
+  try {
+    const arData = await fetchData("receivables");
+    fillPartyDatalist("arPartyNames", (arData.receivables || []).map(r => r.party));
+  } catch (e) { /* 客戶名單抓不到就算了,表單一樣能手動打字新增 */ }
+
+  try {
+    const apData = await fetchData("payables");
+    fillPartyDatalist("apPartyNames", (apData.payables || []).map(r => r.party));
+  } catch (e) { /* 廠商名單抓不到就算了,表單一樣能手動打字新增 */ }
+}
+
+function fillPartyDatalist(listId, names) {
+  const unique = Array.from(new Set(names.filter(Boolean)));
+  const list = document.getElementById(listId);
+  list.innerHTML = unique.map(n => `<option value="${n}">`).join("");
 }
 
 function updateCurQtyHint() {
@@ -232,10 +316,11 @@ function updateCurQtyHint() {
 
 // 依「事件類型」切換來源/目的地點欄位的顯示、必填、跟數量欄位的說明文字
 const MOV_TYPE_CONFIG = {
-  "進貨":     { from: false, to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "進貨數量請填正數。" },
-  "銷售":     { from: true,  to: false, toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "銷售數量請填正數。來源地點可以留空(如果不確定是從哪個倉庫出貨)。" },
-  "移倉":     { from: true,  to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, hint: "移倉數量請填正數,來源跟目的地點都要填,而且要不一樣。" },
-  "盤點調整": { from: false, to: true,  toLabel: "地點",     qtyLabel: "校正數量(可正可負)", qtyMin: null, hint: "盤點少了就填負數(盤虧),盤點多了就填正數(盤盈),記得在備註寫原因。" },
+  "進貨":     { from: false, to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, showAmount: false, hint: "進貨數量請填正數。" },
+  "銷售":     { from: true,  to: false, toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, showAmount: false, hint: "銷售數量請填正數。來源地點可以留空(如果不確定是從哪個倉庫出貨)。" },
+  "移倉":     { from: true,  to: true,  toLabel: "目的地點", qtyLabel: "數量", qtyMin: 0, showAmount: false, hint: "移倉數量請填正數,來源跟目的地點都要填,而且要不一樣。" },
+  "盤點調整": { from: false, to: true,  toLabel: "地點",     qtyLabel: "校正數量(可正可負)", qtyMin: null, showAmount: false, hint: "盤點少了就填負數(盤虧),盤點多了就填正數(盤盈),記得在備註寫原因。" },
+  "訂購中":   { from: false, to: false, toLabel: "目的地點", qtyLabel: "訂購數量(到貨沖銷時填負數)", qtyMin: null, showAmount: true, hint: "下單時填正數(還沒到貨,只計入在途庫存,不會加進現有庫存量)。等貨真的到了:①正常記一筆「進貨」讓庫存真的增加,②另外再回來這裡記一筆負數的「訂購中」把原本的在途量沖銷掉。金額、預計到貨日都是選填,填了的話「現金流量預測」頁面比較看得出大概什麼時候要付錢。" },
 };
 
 function applyMovTypeConfig() {
@@ -247,6 +332,8 @@ function applyMovTypeConfig() {
   document.getElementById("movTo").required = cfg.to;
   document.getElementById("movToLabel").textContent = cfg.toLabel;
   document.getElementById("movQtyLabel").textContent = cfg.qtyLabel;
+  document.getElementById("movAmountField").dataset.hidden = cfg.showAmount ? "false" : "true";
+  document.getElementById("movExpectedArrivalField").dataset.hidden = cfg.showAmount ? "false" : "true";
   const qtyInput = document.getElementById("movQty");
   if (cfg.qtyMin === null) qtyInput.removeAttribute("min"); else qtyInput.min = cfg.qtyMin;
   document.getElementById("movHint").textContent = cfg.hint;
@@ -312,7 +399,7 @@ function setupForm(opts) {
         form.reset();
         preview.style.display = "none";
         fieldset.disabled = false;
-        if (opts.formId === "movForm" || opts.formId === "cfForm") {
+        if (opts.formId === "movForm" || opts.formId === "cfForm" || opts.formId === "arForm" || opts.formId === "apForm") {
           const today = new Date().toISOString().slice(0, 10);
           form.querySelector('input[name="date"]').value = today;
         }
@@ -346,7 +433,7 @@ setupForm({
 
 setupForm({
   formId: "movForm", fieldsetId: "movFieldset", previewId: "movPreview", msgId: "movMsg",
-  action: "addMovement", fields: ["date","type","name","qty","fromLocation","toLocation","note"],
+  action: "addMovement", fields: ["date","type","name","qty","fromLocation","toLocation","note","amount","expectedArrival"],
   buildPreview(data) {
     const cfg = MOV_TYPE_CONFIG[data.type];
     let desc = "";
@@ -354,9 +441,14 @@ setupForm({
     else if (data.type === "銷售") desc = `銷售 <b>${data.qty}</b>件` + (data.fromLocation ? `,出自「${data.fromLocation}」` : "(不指定地點)");
     else if (data.type === "移倉") desc = `移倉 <b>${data.qty}</b>件:「${data.fromLocation}」 → 「${data.toLocation}」`;
     else if (data.type === "盤點調整") desc = (Number(data.qty) >= 0 ? `盤盈 +` : `盤虧 `) + `<b>${data.qty}</b>件,地點「${data.toLocation}」`;
+    else if (data.type === "訂購中") {
+      desc = (Number(data.qty) >= 0 ? `下單訂購 <b>${data.qty}</b>件(還沒到貨)` : `到貨沖銷訂購中 <b>${data.qty}</b>件`)
+        + (data.amount ? `,金額 ${Number(data.amount).toLocaleString()}` : "")
+        + (data.expectedArrival ? `,預計到貨日 ${data.expectedArrival}` : "");
+    }
     return `<div class="preview-title">即將記錄一筆「${data.type}」</div>
       日期:${data.date}<br>品項:${data.name}<br>${desc}${data.note ? `<br>備註:${data.note}` : ""}
-      <div class="hint" style="margin-top:8px">這是新增一筆事件,不會蓋掉之前的紀錄,送出後系統會自動重新算出目前庫存。</div>`;
+      <div class="hint" style="margin-top:8px">這是新增一筆事件,不會蓋掉之前的紀錄,送出後系統會自動重新算出目前庫存${data.type === "訂購中" ? "/在途庫存" : ""}。</div>`;
   }
 });
 
@@ -367,6 +459,26 @@ setupForm({
     return `<div class="preview-title">即將記錄一筆「${data.type}」</div>
       日期:${data.date}<br>金額:<b>${Number(data.amount).toLocaleString()}</b>${data.note ? `<br>說明:${data.note}` : ""}
       <div class="hint" style="margin-top:8px">這是新增一筆事件,月報表會自動照日期重新加總。</div>`;
+  }
+});
+
+setupForm({
+  formId: "arForm", fieldsetId: "arFieldset", previewId: "arPreview", msgId: "arMsg",
+  action: "addReceivableEvent", fields: ["date","type","party","amount","dueDate","note"],
+  buildPreview(data) {
+    return `<div class="preview-title">即將記錄一筆應收帳款「${data.type}」</div>
+      日期:${data.date}<br>客戶:${data.party}<br>金額:<b>${Number(data.amount).toLocaleString()}</b>${data.dueDate ? `<br>到期日:${data.dueDate}` : ""}${data.note ? `<br>備註:${data.note}` : ""}
+      <div class="hint" style="margin-top:8px">這是新增一筆事件,帳齡分佈由系統用「先到期的先沖」自動估算,不是逐筆對發票沖帳。</div>`;
+  }
+});
+
+setupForm({
+  formId: "apForm", fieldsetId: "apFieldset", previewId: "apPreview", msgId: "apMsg",
+  action: "addPayableEvent", fields: ["date","type","party","amount","dueDate","note"],
+  buildPreview(data) {
+    return `<div class="preview-title">即將記錄一筆應付帳款「${data.type}」</div>
+      日期:${data.date}<br>廠商:${data.party}<br>金額:<b>${Number(data.amount).toLocaleString()}</b>${data.dueDate ? `<br>到期日:${data.dueDate}` : ""}${data.note ? `<br>備註:${data.note}` : ""}
+      <div class="hint" style="margin-top:8px">這是新增一筆事件,帳齡分佈由系統用「先到期的先沖」自動估算,不是逐筆對帳單沖帳。</div>`;
   }
 });
 
